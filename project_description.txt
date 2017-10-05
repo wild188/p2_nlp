@@ -1,0 +1,212 @@
+Natural Language Processing - Project 2
+CSE 398/498-013
+Prof. Sihong Xie
+Due Date:
+11:59pm, Oct 12, 2017 (Phase I),
+1
+11:59pm, Oct 24, 2017 (Phase II)
+Problem Statement
+Given a POS-tagged (labeled/training) corpus and un-tagged (unlabeled/test) corpus, train an
+HMM model to predict POS tags on the test corpus.
+1.1
+Three problems and their solutions in HMM
+#»
+• Likelihood calculation: given a sentence O and the HMM parameter λ = {A, B, π}, find
+#»
+p( O|λ). This problem can be solved using the forward algorithm. See Chap 6.3 of SLP2
+for more details.
+#»
+#»
+• Decoding: given a sentence O and the HMM parameter λ = {A, B, π}, find a Q ∗ , a
+#» #»
+sequence of POS tags, to maximize p( Q| O, λ). This problem is solved using the Viterbi
+algorithm. See Chap 6.4 of SLP2 for more details.
+#»
+#»
+• Model training: given an unlabeled corpus of D sentences D = { O 1 , . . . , O D }, find the
+HMM parameter λ = {A, B, π} that maximizes p(D|λ). This problem is solved using the
+Baum-Welch algorithm, an example of Expectation-Maximization (EM) algorithm. See
+Chap 6.5 of SLP2 for more details.
+1.2
+Supervised, unsupervised and Semi-supervised HMM
+The algorithm in Chap 6.5 is only for the unsupervised learning of HMM: finding λ using D
+only. The problem here is that with zero prior knowledge, the learned λ can be inaccurate and
+hard to interpret.
+On the other hand, a labeled corpus L is given, then a simple way to obtain λ is maximum
+likelihood estimation (MLE):
+a ij =
+#(q t = i, q t+1 = j)
+,
+#(q t = i)
+b io =
+#(q t = i, o t = o)
+,
+#(q t = i)
+π i =
+#(q 1 = i)
+.
+# of sentences
+(1)
+The strength of this approach lies in the prior linguistic information from L: the human knowl-
+edge regarding the language is encoded in L and MLE just extracts that. However, if the L is
+small, not all linguistic knowledge is covered.
+The third way is the semi-supervised approach that combine both the labeled and unlabeled
+corpora for decoding and learning. The obvious way is to use the supervised MLE to find an
+initial guess of λ, then run the Baum-Welch algorithm on D to re-estimate λ. The potential
+strength of this approach is that it has access to more data than the above two approaches.
+However, the knowledge from L and D can be different in quality and quantity, and which
+corpus to trust more remains a question (phase II asks you to explore this question).
+1.3
+Numerical issues
+During the Viterbi algorithm, we are taking products of many probabilities, leading to infinites-
+imal numbers that underflows and our computers do not have sufficient precision to represent
+1the numbers. Note that only the relative quantities of v t (j) matter when maximizing and we
+can work in the log scale:
+log v t (j) = max [log v t−1 (i) + log a ij + log b jo t ]
+i
+(2)
+The maximizing index i ∗ will be the same whether log is taken or not so that the backtracking
+#»
+pointers are not affected. The reconstructed prediction Q ∗ will be the same.
+During the forward algorithm, the same issue arises but is addressed in a different way. For
+each location t,
+(P
+i α̂ t−1 (i)a ij b jo t if t > 1
+α̃ t (j) =
+π j b jo t
+if t = 1
+(3)
+1
+c t = P
+(normalizing factor)
+j α̃ t (j)
+α̂ t (j) = c t × α̃ t (j)
+Then α̂ is normalized to a good range and
+1.4
+(normalization)
+P
+j
+α̂ t (j) = 1.
+Working with corpora
+Our textbook only shows you how to run the above algorithms on a single sentence, while we
+are dealing with corpora of multiple sentences. This difference will affect the EM algorithm:
+simply storing all ξ t (i, j) and ξ t (i) and other variables for each sentence is not scalable. Instead,
+you will need to design online algorithm that only take memory linear in the sentence length
+#»
+but not the corpus size. You can estimate the ξ’s for the sentence O d , update the sums in the
+nominator and denominator in
+P d P T −1 d
+ξ t (i, j)
+â ij = P k=1 P T t=1
+,
+(4)
+−1 P d
+t=1
+j ξ t (i, j)
+k=1 d
+and go to the next sentence. At end, the sums are accumulated over all position of the whole
+corpus (imagine that the corpus as a very long sentence that is the concatenation of invididual
+sentences in the corpus).
+P D P T −1 d
+ξ t (i, j)
+â ij = P k=1 P T t=1
+,
+(5)
+−1 P d
+t=1
+j ξ t (i, j)
+k=1 D
+B and π can be done in a similar way.
+2
+Exercises
+Answer the following questions in your report:
+• Prove that α̂ t (j) =
+Q t
+s=1 c s α t (j)
+and
+P
+j
+α T (j) =
+Q T
+s=1 c s
+(hint: use proof of induction).
+• Assume β T (j) = c T for all j, then derive similar formula as above to prevent underflowing
+for all β t (j).
+23
+Experiments
+3.1
+Data exploration
+In phase I, download the small POS-tagged training and test corpora from https://www.clips.
+uantwerpen.be/conll2000/chunking/. Refer to the website regarding the data format. In
+phase II, larger corpora will be released to test the scalability of your programs. For both cases,
+report the number of POS-tags, tokens (unigrams), sentences, maximal length of sentences.
+3.2
+System design and implementations
+Figure 1: Overall system design. p1 in the folder names indicate that the files are for phase I.
+For phase II, you will need to change them to p2.
+Figure 1 shows the design. Similar to project 1, boxes indicate java classes, arrows indicate
+flow of data, with names of data over arrows being the input/output (Italic names are files on
+disk, while normal names are Java objects within your program). See the attached bash script
+and the functions/APIs to understand the flow. You may create other helper files, but I will
+enforce the formats of those files shown in Figure 1.
+The list of Java classes in the project:
+• FileHandler.java It is provided to you to read and write tagged and untagged sentences.
+data/p1/train.txt, data/p1/test.txt and results/p1/test predictions.txt will be handled by
+this class. Note that the prediction files are not that different from the train.txt and
+test.txt files: the only two differences are: 1) the POS tags in the predictions files are
+generated by your HMM model instead of given, and 2) there are only two columns
+(unigram tokens and POS tags) in the prediction files. This class will be the same for
+phases I and II except that files will be under different folders (p1 vs. p2 ).
+• HMM.java In phase I, implement the forward, backward and the EM (Baum-Welch) algo-
+rithms. Use FileHandler to read D and L. Initialize λ = {A, B, π} using MLE on L. Then
+run the EM on D to re-estimate λ using the forward-backward algorithm. Matrix class
+Jama is recommended to represent all matrices and improve the readability of your codes.
+Numerical issues need to be taken care of as indicated in the problem statement. Pro-
+duce and output predictions
+of POS tags for sentences in D to results/p1/predictions.txt,
+P
+#» (t)
+and log likelihoods ( D
+p(
+O
+d |λ )) after each iteration t of the EM algorithm) to re-
+d=1
+sults/p1/log.txt,
+In phase II, you will be asked to re-estimate λ using both L and D, details TBD (to be
+determined).
+3• Evaluator.java This class calculates performance metrics using your predictions and
+ground truth POS tags. This class will be provided to you.
+• Word.java This class encapsulates word information including the token, POS tag (in a
+particular position, if any) and other features of a word. Public methods provide ways to
+access and modify word information.
+• Sentence.java The class represents a single sentence, which is a list of Word objects.
+Note that a corpus can be represented by an array of Sentence objects. Public methods
+provide ways to access and modify a sentence.
+Bash script files (build java.sh and run java.sh) are provided to compile and run the pro-
+grams. The necessary third party packages are in the folder “jars” in the zipped file (jama.jar
+in this project).
+4
+Deliverables
+Download the provided zip file and put down your codes in the empty functions. Add README.txt
+and report p2.pdf to the root folder (one level above src). Then zip the whole folder to <your
+Lehigh id> p2.zip and upload it to coursesite. Don’t submit the project from your IDE.
+The README.txt describes what works and what does not, any improvements you think
+that should earn you extra credits. The report p2.pdf file contains the answers to the exercise
+questions, a plot of log-likelihood during EM and an analysis of the results. More details TBD.
+Before you submit your project, compile and run it (using the provided bash scripts) on a
+Sunlab machine where your projects will be graded.
+Important: remember to click ”Submit” botton to deliver your submission, otherwise the
+project will be regarded as NOT submitted.
+5
+Grading
+When grading your project, I will run the bash scripts to compile and run your codes on a
+Sunlab machine. HMM decoding accuracy, running time and memory consumption will be
+used to rank your project against others’ and determine one third of your total grade (15 pts)
+of this project.
+Important: you can submit a milestone before the phase I due date to earn an extra credit
+of 2 points on top of the 15 points of the entire project. The milestone submission format is the
+same as the final submission in phase II but without the report and README.txt. It shall at
+least contain an HMM model that can be trained and output predictions. I will just check if it
+works and don’t care how accurate it is at that time. You can keep improving it before phase
+II due date.
+4
