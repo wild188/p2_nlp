@@ -19,6 +19,9 @@ class HMM {
 	// number of pos tags
 	int num_postags;
 	
+	//Tracks number of occurances of each POS tag
+	ArrayList<Integer> posCount;
+
 	// mapping POS tags in String to their indices
 	Hashtable<String, Integer> pos_tags;
 	
@@ -87,12 +90,61 @@ class HMM {
 	 * Set up the basic statistics of the corpora.
 	 */
 	public HMM(ArrayList<Sentence> _labeled_corpus, ArrayList<Sentence> _unlabeled_corpus) {
+		this.labeled_corpus = _labeled_corpus;
+		this.unlabeled_corpus = _unlabeled_corpus;
+
+		prepareMatrices();
 	}
 
 	/**
 	 * Create HMM variables.
 	 */
 	public void prepareMatrices() {
+		System.out.printf("Reading in labeled corpus(%d) and preparing matrices.\n", labeled_corpus.size());
+		Integer posCounter = 0;
+		Integer vocabCounter = 0;
+		posCount = new ArrayList<Integer>();
+		pos_tags = new Hashtable<String, Integer>();
+		inv_pos_tags = new Hashtable<Integer, String>();
+		vocabulary = new Hashtable<String, Integer>();
+
+		for(Sentence s : labeled_corpus){
+			int len = s.length();
+			if(len > max_sentence_length) max_sentence_length = len;
+			String prevPosTag = null;
+			for(int i = 0; i < len; i++){
+				Word curWord = s.getWordAt(i);
+				String curPosTag;
+				if(!pos_tags.containsKey(curPosTag = curWord.getPosTag())){
+					pos_tags.put(curPosTag, posCounter);
+					inv_pos_tags.put(posCounter, curPosTag);
+					posCount.add(1);
+					posCounter++;
+				}else{
+					int index = pos_tags.get(curPosTag);
+					posCount.set(index, posCount.get(index) + 1);
+				}
+				if(!vocabulary.containsKey(curWord.getLemme())){
+					vocabulary.put(curWord.getLemme(), vocabCounter);
+					vocabCounter++;
+				}
+				prevPosTag = curPosTag;
+			}
+		}
+		num_postags = posCounter;
+		num_words = vocabCounter;
+		System.out.printf("Read in %d unique POS tags and %d unique vocab words.\n", num_postags, num_words);
+
+		// for(int i = 0; i < posCounter; i++){
+		// 	Integer count = posCount.get(i);
+		// 	System.out.println(inv_pos_tags.get(i).toString() + ":" + count);
+		// }
+
+		A = new Matrix(num_postags, num_postags);
+		B = new Matrix(num_words, num_postags);
+		pi = new Matrix(1, num_postags);
+
+
 	}
 
 	/** 
@@ -100,6 +152,7 @@ class HMM {
 	 *  used as initialization of the parameters.
 	 */
 	public void mle() {
+		
 	}
 
 	/**
@@ -132,6 +185,7 @@ class HMM {
 	 * \xi_t(i,j) and \xi_t(i) are computed for a sentence
 	 */
 	private double expection(Sentence s) {
+		return 0;
 	}
 
 	/**
@@ -149,6 +203,7 @@ class HMM {
 	 * return: log P(O|\lambda)
 	 */
 	private double forward(Sentence s) {
+		return 0;
 	}
 
 	/**
@@ -157,6 +212,7 @@ class HMM {
 	 * return: log P(O|\lambda)
 	 */
 	private double backward(Sentence s) {
+		return 0;
 	}
 
 	/**
@@ -164,6 +220,7 @@ class HMM {
 	 * v are in log scale, A, B and pi are in the usual scale.
 	 */
 	private double viterbi(Sentence s) {
+		return 0;
 	}
 
 	public static void main(String[] args) throws IOException {
