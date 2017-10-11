@@ -20,7 +20,7 @@ class IntPair{
 	public boolean equals(Object x) {
 		IntPair b = (IntPair)x;
 		if(b == null) return false;
-		return this.one == b.one && this.two == b.two;
+		return this.one.equals(b.one) && this.two.equals(b.two);
 	}
 
 	@Override
@@ -168,6 +168,7 @@ class HMM {
 				if(wordPOSBigram.containsKey(wordTag)){
 					//System.out.println("Hello!");
 					wordPOSBigram.put(wordTag, wordPOSBigram.get(wordTag) + 1);
+					//System.out.println(wordPOSBigram.get(wordTag));
 				}else{
 					wordPOSBigram.put(wordTag, 1);
 				}
@@ -187,11 +188,6 @@ class HMM {
 		num_words = vocabCounter;
 		System.out.printf("Read in %d unique POS tags and %d unique vocab words.\n", num_postags, num_words);
 
-		// for(int i = 0; i < posCounter; i++){
-		// 	Integer count = posCount.get(i);
-		// 	System.out.println(inv_pos_tags.get(i).toString() + ":" + count);
-		// }
-
 		A = new Matrix(num_postags, num_postags);
 		B = new Matrix(num_postags, num_words);
 		pi = new Matrix(1, num_postags);
@@ -209,45 +205,39 @@ class HMM {
 		System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
 
 		int wordCount = 0;
-		for(int i = 0; i < num_postags; i++){
-			for(int j = 0; j < num_postags; j++){
-				//System.out.printf("Searching for %d, %d in pos bigrams\n", i, j);
-				IntPair target = new IntPair(i, j);
-				//double aij = posBigrams.containsKey(target)? (double)posBigrams.get(target)/(double)posCount.get(i) : 0;
-				double aij = 0;
-				if(posBigrams.containsKey(target)){
-					aij = (double)posBigrams.get(target)/(double)posCount.get(i);
-					//System.out.println("match!");
-					//System.out.printf("%d, ", 1);
-				}//else System.out.printf("%d, ", 0);
-				A.set(i, j, aij);
-				
-			}
-			//System.out.print("\n");
-
-			
-			// for(int k = 0; k < num_words; k++){
-			// 	IntPair target = new IntPair(k, i);
-			// 	//double bij = wordPOSBigram.containsKey(target)? (double)wordPOSBigram.get(target)/(double)posCount.get(i) : 0;
-			// 	double bij = 0;
-			// 	if(wordPOSBigram.containsKey(target)){
-			// 		bij = (double)wordPOSBigram.get(target)/(double)posCount.get(i);
-			// 		wordCount++;
-			// 		System.out.printf("%d, %s: %d\n", k, inv_pos_tags.get(i), wordPOSBigram.get(target));
-			// 	}
-				
-			// 	B.set(i, k, bij);
-			// }
+		Set<IntPair> posPairs = posBigrams.keySet();
+		for(IntPair pair : posPairs){
+			double aij = (double)posBigrams.get(pair)/(double)posCount.get(pair.one);
+			A.set(pair.one, pair.two, aij);
+			//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
 		}
+
 		Set<IntPair> pairs = wordPOSBigram.keySet();
+		int oneMatch = 0;
 		for(IntPair pair : pairs){
 			double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
 			B.set(pair.two, pair.one, bij);
-			System.out.printf("%d, %s: %d\n", pair.one, inv_pos_tags.get(pair.two), wordPOSBigram.get(pair));
+			//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
 			wordCount++;
+			if(wordPOSBigram.get(pair).equals(1)){
+				oneMatch++;
+			}
+		}
+		int[] startPOS = new int[num_postags];
+		int numSentences = 0;
+		for(Sentence s : labeled_corpus){
+			String tag = s.getWordAt(0).getPosTag();
+			int index = pos_tags.get(tag);
+			startPOS[index]++;
+			numSentences++;
+		}
+		for(int i = 0; i < num_postags; i++){
+			double value = (double)startPOS[i]/(double)numSentences;
+			//System.out.printf("%s : %f\n", inv_pos_tags.get(i), value);
+			pi.set(0, i, value);
 		}
 
-		System.out.printf("%d word pos tag matches\n", wordCount);
+		System.out.printf("%d word pos tag matches, %d had only one match\n", wordCount, oneMatch);
 	}
 
 	/**
