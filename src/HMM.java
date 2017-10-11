@@ -4,8 +4,30 @@ import java.util.ArrayList;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.util.Objects;
 
 import Jama.Matrix;
+
+class IntPair{
+	public Integer one;
+	public Integer two;
+	public IntPair(int x, int y){
+		one = x;
+		two = y;
+	}
+
+	@Override
+	public boolean equals(Object x) {
+		IntPair b = (IntPair)x;
+		if(b == null) return false;
+		return this.one == b.one && this.two == b.two;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(one, two);
+	}
+}
 
 class HMM {
 	/* Section for variables regarding the data */
@@ -21,6 +43,12 @@ class HMM {
 	
 	//Tracks number of occurances of each POS tag
 	ArrayList<Integer> posCount;
+
+	//count of paired POSs
+	Hashtable<IntPair, Integer> posBigrams;
+
+	//count of word mapping to a POS tag (word first POS second)
+	Hashtable<IntPair, Integer> wordPOSBigram;
 
 	// mapping POS tags in String to their indices
 	Hashtable<String, Integer> pos_tags;
@@ -93,7 +121,11 @@ class HMM {
 		this.labeled_corpus = _labeled_corpus;
 		this.unlabeled_corpus = _unlabeled_corpus;
 
-		prepareMatrices();
+		//prepareMatrices();
+	}
+
+	private void processWord(Word w){
+
 	}
 
 	/**
@@ -107,6 +139,8 @@ class HMM {
 		pos_tags = new Hashtable<String, Integer>();
 		inv_pos_tags = new Hashtable<Integer, String>();
 		vocabulary = new Hashtable<String, Integer>();
+		wordPOSBigram = new Hashtable<IntPair, Integer>();
+		posBigrams = new Hashtable<IntPair, Integer>();
 
 		for(Sentence s : labeled_corpus){
 			int len = s.length();
@@ -128,6 +162,24 @@ class HMM {
 					vocabulary.put(curWord.getLemme(), vocabCounter);
 					vocabCounter++;
 				}
+
+				//increment bigrams
+				IntPair wordTag = new IntPair(vocabulary.get(curWord.getLemme()), pos_tags.get(curPosTag));
+				if(wordPOSBigram.containsKey(wordTag)){
+					//System.out.println("Hello!");
+					wordPOSBigram.put(wordTag, wordPOSBigram.get(wordTag) + 1);
+				}else{
+					wordPOSBigram.put(wordTag, 1);
+				}
+				if(i != 0){
+					IntPair pos_pos = new IntPair(pos_tags.get(prevPosTag), pos_tags.get(curPosTag));
+					if(posBigrams.containsKey(pos_pos)){
+						posBigrams.put(pos_pos, posBigrams.get(pos_pos) + 1);
+					}else{
+						posBigrams.put(pos_pos, 1);
+						//System.out.printf("Inserted %d, %d to pos bigrams.\n", pos_tags.get(prevPosTag), pos_tags.get(curPosTag));
+					}
+				}
 				prevPosTag = curPosTag;
 			}
 		}
@@ -141,10 +193,10 @@ class HMM {
 		// }
 
 		A = new Matrix(num_postags, num_postags);
-		B = new Matrix(num_words, num_postags);
+		B = new Matrix(num_postags, num_words);
 		pi = new Matrix(1, num_postags);
-
-
+		
+		mle();
 	}
 
 	/** 
@@ -152,7 +204,50 @@ class HMM {
 	 *  used as initialization of the parameters.
 	 */
 	public void mle() {
-		
+		System.out.println("Populating A, B and pi");
+		System.out.printf("POS Bigram size: %d\n", posBigrams.size());
+		System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
+
+		int wordCount = 0;
+		for(int i = 0; i < num_postags; i++){
+			for(int j = 0; j < num_postags; j++){
+				//System.out.printf("Searching for %d, %d in pos bigrams\n", i, j);
+				IntPair target = new IntPair(i, j);
+				//double aij = posBigrams.containsKey(target)? (double)posBigrams.get(target)/(double)posCount.get(i) : 0;
+				double aij = 0;
+				if(posBigrams.containsKey(target)){
+					aij = (double)posBigrams.get(target)/(double)posCount.get(i);
+					//System.out.println("match!");
+					//System.out.printf("%d, ", 1);
+				}//else System.out.printf("%d, ", 0);
+				A.set(i, j, aij);
+				
+			}
+			//System.out.print("\n");
+
+			
+			// for(int k = 0; k < num_words; k++){
+			// 	IntPair target = new IntPair(k, i);
+			// 	//double bij = wordPOSBigram.containsKey(target)? (double)wordPOSBigram.get(target)/(double)posCount.get(i) : 0;
+			// 	double bij = 0;
+			// 	if(wordPOSBigram.containsKey(target)){
+			// 		bij = (double)wordPOSBigram.get(target)/(double)posCount.get(i);
+			// 		wordCount++;
+			// 		System.out.printf("%d, %s: %d\n", k, inv_pos_tags.get(i), wordPOSBigram.get(target));
+			// 	}
+				
+			// 	B.set(i, k, bij);
+			// }
+		}
+		Set<IntPair> pairs = wordPOSBigram.keySet();
+		for(IntPair pair : pairs){
+			double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
+			B.set(pair.two, pair.one, bij);
+			System.out.printf("%d, %s: %d\n", pair.one, inv_pos_tags.get(pair.two), wordPOSBigram.get(pair));
+			wordCount++;
+		}
+
+		System.out.printf("%d word pos tag matches\n", wordCount);
 	}
 
 	/**
