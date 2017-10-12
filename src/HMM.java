@@ -83,10 +83,13 @@ class HMM {
 	private Matrix scales;
 
 	// logged v for Viterbi
-	private Matrix v;
-	private Matrix back_pointer;
-	private Matrix pred_seq;
-	
+	//private Matrix v;
+	private double[] v;
+	//private Matrix back_pointer;
+	private int[][] back_pointer;
+	//private Matrix pred_seq;
+	private int[] pred_seq;
+
 	// \xi_t(i): expected frequency of pos tag i at position t. Use as an accumulator.
 	private Matrix gamma;
 	
@@ -122,10 +125,6 @@ class HMM {
 		this.unlabeled_corpus = _unlabeled_corpus;
 
 		//prepareMatrices();
-	}
-
-	private void processWord(Word w){
-
 	}
 
 	/**
@@ -246,11 +245,14 @@ class HMM {
 	public void em() {
 	}
 	
+	private Matrix posibilities;
+
 	/**
 	 * Prediction
 	 * Find the most likely pos tag for each word of the sentences in the unlabeled corpus.
 	 */
 	public void predict() {
+		viterbi(labeled_corpus.get(0));
 	}
 	
 	/**
@@ -280,6 +282,41 @@ class HMM {
 	private void maximization() {
 	}
 
+	private double forwardHelper(Sentence s, int position){
+		Word word = s.getWordAt(position);
+		int wIndex = vocabulary.get(word.getLemme());
+		double result;
+		double sum = 0;
+		double max = 0;
+		int maxPOSindex = 0;
+		if(position == 0){
+			for(int i = 0; i < num_postags; i++){
+				double temp = pi.get(0, i) * B.get(i, wIndex);
+				sum += pi.get(0, i) * B.get(i, wIndex);
+				if(temp > max){
+					max = temp;
+					maxPOSindex = i;
+				}
+			}
+			result = Math.log(sum);
+		}else{
+			double prevResult = forwardHelper(s, position - 1);
+			Word prevWord = s.getWordAt(position - 1);
+			int prevPOSindex = pos_tags.get(prevWord.getPosTag());
+			for(int i = 0; i < num_postags; i++){
+				double temp = A.get(prevPOSindex, i) * B.get(i, wIndex);
+				sum += temp;
+				if( temp > max){
+					max = temp;
+					maxPOSindex = i;
+				}
+			}
+			result = Math.log(sum) + prevResult;
+		}
+		word.setPosTag(inv_pos_tags.get(new Integer(maxPOSindex)));
+		return result;
+	}
+
 	/**
 	 * Forward algorithm for one sentence
 	 * s: the sentence
@@ -288,7 +325,7 @@ class HMM {
 	 * return: log P(O|\lambda)
 	 */
 	private double forward(Sentence s) {
-		return 0;
+		return forwardHelper(s, s.length());
 	}
 
 	/**
@@ -300,11 +337,65 @@ class HMM {
 		return 0;
 	}
 
+	private Matrix vPaths;
+	private Matrix curPprob;
+
 	/**
 	 * Viterbi algorithm for one sentence
 	 * v are in log scale, A, B and pi are in the usual scale.
+	 * private Matrix v;
+	 * private Matrix back_pointer;
+	 * private Matrix pred_seq;
 	 */
 	private double viterbi(Sentence s) {
+		int len = s.length();
+		back_pointer = new int[len][num_postags];
+		v = new double[num_postags];//new Matrix(1, num_postags);
+		Word word = s.getWordAt(0);
+		int wIndex = vocabulary.get(word.getLemme());
+		for(int k = 0; k < num_postags; k++){
+			double prob = pi.get(0, k) * B.get(k, wIndex);
+			v[k] = Math.log(prob);
+			back_pointer[0][k] = k;
+		}
+		for(int i = 1; i < len; i++){
+			word = s.getWordAt(i);
+			wIndex = vocabulary.get(word.getLemme());
+			for(int j = 0; j < num_postags; j++){
+				double max = 0;
+				int maxPos = 0;
+				for(int h  = 0; h < num_postags; h++){
+					double temp = A.get(j, h) * B.get(h, wIndex);
+					if(temp > max){
+						max = temp;
+						maxPos = h;
+					}
+				}
+				back_pointer[i][j] = maxPos;
+				v[j] += Math.log(max);
+			}
+		}
+		
+		int maxEndIndex = 0;
+		double maxEnd = 0;
+		for(int i = 0; i < num_postags; i++){
+			if(v[i] > maxEnd){
+				maxEnd = v[i];
+				maxEndIndex = i;
+			}
+		}
+
+		pred_seq = new int[len];
+		int prev = maxEndIndex;
+		for(int i = len - 1; i > 0; i--){
+			prev = back_pointer[i][prev];
+			pred_seq[i] = prev;
+		}
+
+		for(int i = 0; i < len; i++){
+			System.out.printf("%s : %s\n", s.getWordAt(i).getLemme(), inv_pos_tags.get(new Integer(pred_seq[i])));
+		}
+
 		return 0;
 	}
 
