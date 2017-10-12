@@ -252,13 +252,28 @@ class HMM {
 	 * Find the most likely pos tag for each word of the sentences in the unlabeled corpus.
 	 */
 	public void predict() {
-		viterbi(labeled_corpus.get(0));
+		double[] vConfidence = new double[unlabeled_corpus.size()];
+		int i = 0;
+		for(Sentence s : unlabeled_corpus){
+			vConfidence[i] = viterbi(s);
+		}
 	}
 	
 	/**
 	 * Output prediction
 	 */
 	public void outputPredictions(String outFileName) throws IOException {
+		FileWriter fw = new FileWriter(outFileName);
+		BufferedWriter bw = new BufferedWriter(fw);
+		
+		for(Sentence s : unlabeled_corpus){
+			for(Word word : s){
+				bw.write(word.getLemme() + " " + word.getPosTag());
+				bw.newLine();
+			}
+		}
+		bw.close();
+        fw.close();
 	}
 	
 	/**
@@ -293,10 +308,10 @@ class HMM {
 			for(int i = 0; i < num_postags; i++){
 				double temp = pi.get(0, i) * B.get(i, wIndex);
 				sum += pi.get(0, i) * B.get(i, wIndex);
-				if(temp > max){
-					max = temp;
-					maxPOSindex = i;
-				}
+				// if(temp > max){
+				// 	max = temp;
+				// 	maxPOSindex = i;
+				// }
 			}
 			result = Math.log(sum);
 		}else{
@@ -306,14 +321,14 @@ class HMM {
 			for(int i = 0; i < num_postags; i++){
 				double temp = A.get(prevPOSindex, i) * B.get(i, wIndex);
 				sum += temp;
-				if( temp > max){
-					max = temp;
-					maxPOSindex = i;
-				}
+				// if( temp > max){
+				// 	max = temp;
+				// 	maxPOSindex = i;
+				// }
 			}
 			result = Math.log(sum) + prevResult;
 		}
-		word.setPosTag(inv_pos_tags.get(new Integer(maxPOSindex)));
+		//word.setPosTag(inv_pos_tags.get(new Integer(maxPOSindex)));
 		return result;
 	}
 
@@ -352,20 +367,20 @@ class HMM {
 		back_pointer = new int[len][num_postags];
 		v = new double[num_postags];//new Matrix(1, num_postags);
 		Word word = s.getWordAt(0);
-		int wIndex = vocabulary.get(word.getLemme());
+		int wIndex = vocabulary.containsKey(word.getLemme()) ? vocabulary.get(word.getLemme()) : -1;
 		for(int k = 0; k < num_postags; k++){
-			double prob = pi.get(0, k) * B.get(k, wIndex);
+			double prob = wIndex < 0 ? pi.get(0, k) * smoothing_eps : pi.get(0, k) * B.get(k, wIndex);
 			v[k] = Math.log(prob);
 			back_pointer[0][k] = k;
 		}
 		for(int i = 1; i < len; i++){
 			word = s.getWordAt(i);
-			wIndex = vocabulary.get(word.getLemme());
+			wIndex = vocabulary.containsKey(word.getLemme()) ? vocabulary.get(word.getLemme()) : -1;
 			for(int j = 0; j < num_postags; j++){
 				double max = 0;
 				int maxPos = 0;
 				for(int h  = 0; h < num_postags; h++){
-					double temp = A.get(j, h) * B.get(h, wIndex);
+					double temp = wIndex < 0 ? A.get(j, h) * smoothing_eps : A.get(j, h) * B.get(h, wIndex);
 					if(temp > max){
 						max = temp;
 						maxPos = h;
@@ -393,10 +408,11 @@ class HMM {
 		}
 
 		for(int i = 0; i < len; i++){
-			System.out.printf("%s : %s\n", s.getWordAt(i).getLemme(), inv_pos_tags.get(new Integer(pred_seq[i])));
+			s.getWordAt(i).setPosTag(inv_pos_tags.get(new Integer(pred_seq[i])));
+			//System.out.printf("%s : %s\n", s.getWordAt(i).getLemme(), s.getWordAt(i).getPosTag());
 		}
 
-		return 0;
+		return v[maxEndIndex];
 	}
 
 	public static void main(String[] args) throws IOException {
