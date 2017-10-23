@@ -127,6 +127,15 @@ class HMM {
 		//prepareMatrices();
 	}
 
+	private void print(Matrix out){
+		for(int i = 0; i < out.getRowDimension(); i++){
+			for(int j = 0; j < out.getColumnDimension(); j++){
+				System.out.printf("%f ", out.get(i, j));
+			}
+			System.out.println();
+		}
+	}
+
 	/**
 	 * Create HMM variables.
 	 */
@@ -183,6 +192,20 @@ class HMM {
 				prevPosTag = curPosTag;
 			}
 		}
+
+		//Add vocab from training set
+		for(Sentence s : unlabeled_corpus){
+			int len = s.length();
+			if(len > max_sentence_length) max_sentence_length = len;
+			for(int i = 0; i < len; i++){
+				Word curWord = s.getWordAt(i);
+				if(!vocabulary.containsKey(curWord.getLemme())){
+					vocabulary.put(curWord.getLemme(), vocabCounter);
+					vocabCounter++;
+				}
+			}
+		}
+
 		num_postags = posCounter;
 		num_words = vocabCounter;
 		System.out.printf("Read in %d unique POS tags and %d unique vocab words.\n", num_postags, num_words);
@@ -204,24 +227,42 @@ class HMM {
 		System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
 
 		int wordCount = 0;
-		Set<IntPair> posPairs = posBigrams.keySet();
-		for(IntPair pair : posPairs){
-			double aij = (double)posBigrams.get(pair)/(double)posCount.get(pair.one);
-			A.set(pair.one, pair.two, aij);
-			//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
-		}
-
-		Set<IntPair> pairs = wordPOSBigram.keySet();
-		int oneMatch = 0;
-		for(IntPair pair : pairs){
-			double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
-			B.set(pair.two, pair.one, bij);
-			//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
-			wordCount++;
-			if(wordPOSBigram.get(pair).equals(1)){
-				oneMatch++;
+		// Set<IntPair> posPairs = posBigrams.keySet();
+		// for(IntPair pair : posPairs){
+		// 	double aij = (double)posBigrams.get(pair)/(double)posCount.get(pair.one);
+		// 	A.set(pair.one, pair.two, aij);
+		// 	//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
+		// }
+		for(int i = 0; i < A.getRowDimension(); i++){
+			for(int j = 0; j < A.getColumnDimension(); j++){
+				IntPair temp = new IntPair(i, j);
+				int count = posBigrams.containsKey(temp) ? posBigrams.get(temp) : 0;
+				double aij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_postags * num_postags));
+				A.set(i, j, aij);
 			}
 		}
+
+		// Set<IntPair> pairs = wordPOSBigram.keySet();
+		// int oneMatch = 0;
+		// for(IntPair pair : pairs){
+		// 	double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
+		// 	B.set(pair.two, pair.one, bij);
+		// 	//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
+		// 	wordCount++;
+		// 	if(wordPOSBigram.get(pair).equals(1)){
+		// 		oneMatch++;
+		// 	}
+		// }
+		for(int i = 0; i < B.getRowDimension(); i++){
+			for(int j = 0; j < B.getColumnDimension(); j++){
+				IntPair temp = new IntPair(i, j);
+				int count = wordPOSBigram.containsKey(temp) ? wordPOSBigram.get(temp) : 0;
+				double bij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_words * num_postags));
+				B.set(i, j, bij);
+			}
+		}
+
+
 		int[] startPOS = new int[num_postags];
 		int numSentences = 0;
 		for(Sentence s : labeled_corpus){
@@ -236,16 +277,24 @@ class HMM {
 			pi.set(0, i, value);
 		}
 
-		System.out.printf("%d word pos tag matches, %d had only one match\n", wordCount, oneMatch);
+		System.out.printf("%d word pos tag matches\n", wordCount);
 	}
 
 	/**
 	 * Main EM algorithm. 
 	 */
 	public void em() {
+		gamma = new Matrix(max_sentence_length, num_postags);
+		digamma = new Matrix(num_postags, num_postags);
+		gamma_w = new Matrix(num_postags, num_words);
+		gamma_0 = new Matrix(1, num_postags);
+		
+		for(Sentence s : unlabeled_corpus){
+			expection(s);
+		}
+
+		maximization();
 	}
-	
-	private Matrix posibilities;
 
 	/**
 	 * Prediction
@@ -287,6 +336,40 @@ class HMM {
 	 * \xi_t(i,j) and \xi_t(i) are computed for a sentence
 	 */
 	private double expection(Sentence s) {
+		forward(s);
+		backward(s);
+		for(int t = 0; t < s.length(); t++){
+			Word w = s.getWordAt(t);
+			int wordIndex = vocabulary.get(w.getLemme());
+
+			//Increment digamma for transitional accumulator 
+			for(int i = 0; i < num_postags; i++){
+				if(t == (s.length() - 1)) break; //need a next POS tag
+				for(int j = 0; j < num_postags; j++){
+					double dgij = alpha.get(t, i) * A.get(i, j) * B.get(j, wordIndex) * beta.get(t + 1, j);
+					double newVal = dgij + digamma.get(i, j);
+					digamma.set(i, j, newVal);
+				}
+			}
+
+			//Increment gamma for location of POS tags within the sentences
+			int offset = max_sentence_length - s.length();
+			for(int i = 0; i < num_postags; i++){
+				double gti = alpha.get(t, i) * beta.get(t, i);
+				double newVal = gamma.get(t, i) + gti;
+				gamma.set((t + offset), i, newVal);
+
+				if(t == 0){
+					newVal = gamma_0.get(0, i) * gti;
+					gamma_0.set(0, i, newVal);
+				}
+
+				//Increments probability that POS tag i emits word w
+				gamma_w.set(i, wordIndex, (gamma_w.get(i, wordIndex) + gti));
+			}
+		}
+		
+		//print(beta);
 		return 0;
 	}
 
@@ -295,6 +378,35 @@ class HMM {
 	 * Just reestimate A, B and pi using gamma and digamma
 	 */
 	private void maximization() {
+		Matrix ahat = new Matrix(num_postags, num_postags);
+		Matrix bhat = new Matrix(num_postags, num_words);
+		
+
+		for(int i = 0; i < num_postags; i++){
+			double expectedI = 0;
+			for(int k = 0; k < max_sentence_length - 1; k++){
+				expectedI += gamma.get(k, i);
+			}
+
+			for(int j = 0; j < num_postags; j++){
+				ahat.set(i, j, (digamma.get(i, j) / expectedI));
+			}
+
+			for(int h = 0; h < num_words; h++){
+				bhat.set(i, h, (gamma_w.get(i, h) / (expectedI + gamma.get(max_sentence_length - 1, i))));
+			}
+		}
+
+		A = ahat;
+		B = bhat;
+		pi = gamma_0;
+	}
+
+	private void normalize(double sum, int position, Matrix target){
+		double normalizeFactor = 1.0 / sum;
+		for(int i = 0; i < num_postags; i++){
+			target.set(position, i, (target.get(position, i) * normalizeFactor));
+		}
 	}
 
 	private double forwardHelper(Sentence s, int position){
@@ -307,28 +419,25 @@ class HMM {
 		if(position == 0){
 			for(int i = 0; i < num_postags; i++){
 				double temp = pi.get(0, i) * B.get(i, wIndex);
-				sum += pi.get(0, i) * B.get(i, wIndex);
-				// if(temp > max){
-				// 	max = temp;
-				// 	maxPOSindex = i;
-				// }
+				sum += temp;
+				alpha.set(position, i, temp);
 			}
 			result = Math.log(sum);
 		}else{
 			double prevResult = forwardHelper(s, position - 1);
 			Word prevWord = s.getWordAt(position - 1);
-			int prevPOSindex = pos_tags.get(prevWord.getPosTag());
-			for(int i = 0; i < num_postags; i++){
-				double temp = A.get(prevPOSindex, i) * B.get(i, wIndex);
+			//int prevPOSindex = pos_tags.get(prevWord.getPosTag());
+			for(int j = 0; j < num_postags; j++){
+				double temp = 0.0; //A.get(prevPOSindex, i) * B.get(i, wIndex);
+				for(int i = 0; i < num_postags; i++){
+					temp+= A.get(i, j) * B.get(j, wIndex) * alpha.get(position-1, i);
+				}
 				sum += temp;
-				// if( temp > max){
-				// 	max = temp;
-				// 	maxPOSindex = i;
-				// }
+				alpha.set(position, j, temp);
 			}
 			result = Math.log(sum) + prevResult;
 		}
-		//word.setPosTag(inv_pos_tags.get(new Integer(maxPOSindex)));
+		normalize(sum, position, alpha);
 		return result;
 	}
 
@@ -340,7 +449,42 @@ class HMM {
 	 * return: log P(O|\lambda)
 	 */
 	private double forward(Sentence s) {
-		return forwardHelper(s, s.length());
+		alpha = new Matrix(s.length(), num_postags);
+		return forwardHelper(s, s.length() - 1);
+	}
+
+	private double backwardHelper(Sentence s, int position){
+		Word word = s.getWordAt(position);
+		int wIndex = vocabulary.get(word.getLemme());
+		double result;
+		double sum = 0;
+		double max = 0;
+		int maxPOSindex = 0;
+		if(position == (s.length() - 1)){
+			for(int i = 0; i < num_postags; i++){
+				double temp = B.get(i, wIndex);
+				sum += temp;
+				beta.set(position, i, temp);
+			}
+			result = Math.log(sum);
+		}else{
+			double prevResult = backwardHelper(s, position + 1);
+			Word prevWord = s.getWordAt(position - 1);
+			//int prevPOSindex = pos_tags.get(prevWord.getPosTag());
+			for(int j = 0; j < num_postags; j++){
+				double temp = 0;
+				for(int i = 0; i < num_postags; i++){
+					temp+= A.get(j, i) * B.get(j, wIndex) * beta.get(position + 1, i);
+				}
+				//double temp = A.get(prevPOSindex, j) * B.get(j, wIndex);
+				sum += temp;
+				beta.set(position, j, temp);
+			}
+			result = Math.log(sum) + prevResult;
+		}
+		//word.setPosTag(inv_pos_tags.get(new Integer(maxPOSindex)));
+		normalize(sum, position, beta);
+		return result;
 	}
 
 	/**
@@ -349,7 +493,8 @@ class HMM {
 	 * return: log P(O|\lambda)
 	 */
 	private double backward(Sentence s) {
-		return 0;
+		beta = new Matrix(s.length(), num_postags);
+		return backwardHelper(s, 0);
 	}
 
 	private Matrix vPaths;
