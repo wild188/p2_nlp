@@ -477,7 +477,7 @@ class HMM {
 		alpha = new Matrix(s.length(), num_postags);
 		return forwardHelper(s, s.length() - 1);
 	}
-
+ 
 	private double backwardHelper(Sentence s, int position){
 		Word word = s.getWordAt(position);
 		int wIndex = vocabulary.get(word.getLemme());
