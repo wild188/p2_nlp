@@ -111,6 +111,11 @@ class HMM {
 	// number of iterations of EM
 	private int max_iters = 10;
 	
+	// \mu: a value in [0,1] to balance estimations from MLE and EM
+	// \mu=1: totally supervised and \mu = 0: use MLE to start but then use EM totally.
+	private double mu = 0.8;
+	
+
 	/* Section of variables monitoring training */
 	
 	// record the changes in log likelihood during EM
@@ -288,12 +293,14 @@ class HMM {
 		digamma = new Matrix(num_postags, num_postags);
 		gamma_w = new Matrix(num_postags, num_words);
 		gamma_0 = new Matrix(1, num_postags);
-		
-		for(Sentence s : unlabeled_corpus){
-			expection(s);
+		System.out.println("Training EM model.");
+		for(int i = 0; i < max_iters; i++){
+			for(Sentence s : unlabeled_corpus){
+				expection(s);
+			}
+	
+			maximization();
 		}
-
-		maximization();
 	}
 
 	/**
@@ -397,9 +404,27 @@ class HMM {
 			}
 		}
 
-		A = ahat;
-		B = bhat;
-		pi = gamma_0;
+		// reestimate
+		for(int i = 0; i < num_postags; i++){
+			for(int j = 0; j < num_postags; j++){
+				double dVal = (1 - mu) * ahat.get(i, j);
+				double lVal = mu * A.get(i, j);
+				A.set(i, j, lVal + dVal);
+			}
+
+			for(int j = 0; j < num_words; j++){
+				double dVal = (1 - mu) * bhat.get(i, j);
+				double lVal = mu * B.get(i, j);
+				B.set(i, j, lVal + dVal);
+			}
+
+			double dVal = (1 - mu) * gamma_0.get(0, i);
+			double lVal = mu * pi.get(0, i);
+			pi.set(0, i, lVal + dVal);
+		}
+		// A = ahat;
+		// B = bhat;
+		// pi = gamma_0;
 	}
 
 	private void normalize(double sum, int position, Matrix target){
@@ -497,9 +522,6 @@ class HMM {
 		return backwardHelper(s, 0);
 	}
 
-	private Matrix vPaths;
-	private Matrix curPprob;
-
 	/**
 	 * Viterbi algorithm for one sentence
 	 * v are in log scale, A, B and pi are in the usual scale.
@@ -560,6 +582,18 @@ class HMM {
 		return v[maxEndIndex];
 	}
 
+	/**
+	 * Set the semi-supervised parameter \mu
+	 */
+	public void setMu(double _mu) {
+		if (_mu < 0) {
+			this.mu = 0.0;
+		} else if (_mu > 1) {
+			this.mu = 1.0;
+		}
+		this.mu = _mu;
+	}
+
 	public static void main(String[] args) throws IOException {
 		if (args.length < 3) {
 			System.out.println("Expecting at least 3 parameters");
@@ -570,11 +604,17 @@ class HMM {
 		String predictionFileName = args[2];
 		
 		String trainingLogFileName = null;
+
 		
 		if (args.length > 3) {
 			trainingLogFileName = args[3];
 		}
 		
+		double mu = 0.0;
+		
+		if (args.length > 4) {
+			mu = Double.parseDouble(args[4]);
+		}
 		// read in labeled corpus
 		FileHandler fh = new FileHandler();
 		
@@ -583,14 +623,51 @@ class HMM {
 		ArrayList<Sentence> unlabeled_corpus = fh.readTaggedSentences(unlabeledFileName);
 
 		HMM model = new HMM(labeled_corpus, unlabeled_corpus);
-
+		
+		model.setMu(mu);
+		
 		model.prepareMatrices();
+		
 		model.em();
 		model.predict();
-		model.outputPredictions(predictionFileName);
+		model.outputPredictions(predictionFileName + "_" + String.format("%.1f", mu) + ".txt");
 		
 		if (trainingLogFileName != null) {
-			model.outputTrainingLog(trainingLogFileName);
+			model.outputTrainingLog(trainingLogFileName + "_" + String.format("%.1f", mu) + ".txt");
 		}
 	}
+
+	// public static void main(String[] args) throws IOException {
+	// 	if (args.length < 3) {
+	// 		System.out.println("Expecting at least 3 parameters");
+	// 		System.exit(0);
+	// 	}
+	// 	String labeledFileName = args[0];
+	// 	String unlabeledFileName = args[1];
+	// 	String predictionFileName = args[2];
+		
+	// 	String trainingLogFileName = null;
+		
+	// 	if (args.length > 3) {
+	// 		trainingLogFileName = args[3];
+	// 	}
+		
+	// 	// read in labeled corpus
+	// 	FileHandler fh = new FileHandler();
+		
+	// 	ArrayList<Sentence> labeled_corpus = fh.readTaggedSentences(labeledFileName);
+		
+	// 	ArrayList<Sentence> unlabeled_corpus = fh.readTaggedSentences(unlabeledFileName);
+
+	// 	HMM model = new HMM(labeled_corpus, unlabeled_corpus);
+
+	// 	model.prepareMatrices();
+	// 	model.em();
+	// 	model.predict();
+	// 	model.outputPredictions(predictionFileName);
+		
+	// 	if (trainingLogFileName != null) {
+	// 		model.outputTrainingLog(trainingLogFileName);
+	// 	}
+	// }
 }

@@ -35,14 +35,21 @@ class FileHandler {
 
 		while ((cur_line = br.readLine()) != null) {
 			if (is_first || cur_line.length() == 0) {
+				// first word in a sentence
 				if (is_first) {
 					is_first = false;
 					num_sentences++;
 					sent = new Sentence();
 					String[] parts = cur_line.split(" ");
-					sent.addWord(new Word(parts[0], parts[1]));
-
+					if (parts.length == 1) {
+						// all words are unlabeled
+						sent.addWord(new Word(parts[0]));
+					} else {
+						// 2nd column contains POS-tags 
+						sent.addWord(new Word(parts[0], parts[1]));
+					}
 				} else {
+					// last word in a sentence
 					// add the finished sentence
 					taggedSentences.add(sent);
 					
@@ -51,19 +58,26 @@ class FileHandler {
 					sent = new Sentence();
 				}
 			} else {
+				// in the middle
 				/*
 				if (sent == null) {
 					System.out.println("null sent pointer");
 				}
 				*/
 				String[] parts = cur_line.split(" ");
-				Word w = new Word(parts[0], parts[1]);
+				if (parts.length == 1) {
+					// all words are unlabeled
+					sent.addWord(new Word(parts[0]));
+				} else {
+					// 2nd column contains POS-tags 
+					sent.addWord(new Word(parts[0], parts[1]));
+				}
 				/*
 				if (w == null) {
 					System.out.println("null word pointer");
 				}
 				*/
-				sent.addWord(w);
+				//sent.addWord(w);
 			}
 		}
 
