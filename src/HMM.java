@@ -109,7 +109,7 @@ class HMM {
 	private double smoothing_eps = 0.1;
 
 	// number of iterations of EM
-	private int max_iters = 10;
+	private int max_iters = 0;// 10;
 	
 	// \mu: a value in [0,1] to balance estimations from MLE and EM
 	// \mu=1: totally supervised and \mu = 0: use MLE to start but then use EM totally.
@@ -198,7 +198,7 @@ class HMM {
 			}
 		}
 
-		//Add vocab from training set
+		//Add vocab from testing set
 		for(Sentence s : unlabeled_corpus){
 			int len = s.length();
 			if(len > max_sentence_length) max_sentence_length = len;
@@ -228,44 +228,46 @@ class HMM {
 	 */
 	public void mle() {
 		System.out.println("Populating A, B and pi");
-		System.out.printf("POS Bigram size: %d\n", posBigrams.size());
-		System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
+		//System.out.printf("POS Bigram size: %d\n", posBigrams.size());
+		//System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
 
 		int wordCount = 0;
-		// Set<IntPair> posPairs = posBigrams.keySet();
-		// for(IntPair pair : posPairs){
-		// 	double aij = (double)posBigrams.get(pair)/(double)posCount.get(pair.one);
-		// 	A.set(pair.one, pair.two, aij);
-		// 	//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
-		// }
-		for(int i = 0; i < A.getRowDimension(); i++){
-			for(int j = 0; j < A.getColumnDimension(); j++){
-				IntPair temp = new IntPair(i, j);
-				int count = posBigrams.containsKey(temp) ? posBigrams.get(temp) : 0;
-				double aij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_postags * num_postags));
-				A.set(i, j, aij);
-			}
+		Set<IntPair> posPairs = posBigrams.keySet();
+		for(IntPair pair : posPairs){
+			double aij = (double)posBigrams.get(pair)/(double)posCount.get(pair.one);
+			A.set(pair.one, pair.two, aij);
+			//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
 		}
-
-		// Set<IntPair> pairs = wordPOSBigram.keySet();
-		// int oneMatch = 0;
-		// for(IntPair pair : pairs){
-		// 	double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
-		// 	B.set(pair.two, pair.one, bij);
-		// 	//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
-		// 	wordCount++;
-		// 	if(wordPOSBigram.get(pair).equals(1)){
-		// 		oneMatch++;
+		// for(int i = 0; i < A.getRowDimension(); i++){
+		// 	for(int j = 0; j < A.getColumnDimension(); j++){
+		// 		IntPair temp = new IntPair(i, j);
+		// 		int count = posBigrams.containsKey(temp) ? posBigrams.get(temp) : 0;
+		// 		double aij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_postags * num_postags));
+		// 		A.set(i, j, aij);
 		// 	}
+		// 	normalize(i, A);
 		// }
-		for(int i = 0; i < B.getRowDimension(); i++){
-			for(int j = 0; j < B.getColumnDimension(); j++){
-				IntPair temp = new IntPair(i, j);
-				int count = wordPOSBigram.containsKey(temp) ? wordPOSBigram.get(temp) : 0;
-				double bij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_words * num_postags));
-				B.set(i, j, bij);
+
+		Set<IntPair> pairs = wordPOSBigram.keySet();
+		int oneMatch = 0;
+		for(IntPair pair : pairs){
+			double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
+			B.set(pair.two, pair.one, bij);
+			//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
+			wordCount++;
+			if(wordPOSBigram.get(pair).equals(1)){
+				oneMatch++;
 			}
 		}
+		// for(int i = 0; i < B.getRowDimension(); i++){
+		// 	for(int j = 0; j < B.getColumnDimension(); j++){
+		// 		IntPair temp = new IntPair(i, j);
+		// 		int count = wordPOSBigram.containsKey(temp) ? wordPOSBigram.get(temp) : 0;
+		// 		double bij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_words * num_postags));
+		// 		B.set(i, j, bij);
+		// 	}
+		// 	normalize(i, B);
+		// }
 
 
 		int[] startPOS = new int[num_postags];
@@ -327,6 +329,7 @@ class HMM {
 				bw.write(word.getLemme() + " " + word.getPosTag());
 				bw.newLine();
 			}
+			bw.newLine();
 		}
 		bw.close();
         fw.close();
@@ -425,6 +428,14 @@ class HMM {
 		// A = ahat;
 		// B = bhat;
 		// pi = gamma_0;
+	}
+
+	private void normalize(int position, Matrix target){
+		double sum = 0.0;
+		for(int i = 0; i < num_postags; i++){
+			sum+= target.get(position, i);
+		}
+		normalize(sum, position, target);
 	}
 
 	private void normalize(double sum, int position, Matrix target){
