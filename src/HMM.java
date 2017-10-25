@@ -145,7 +145,6 @@ class HMM {
 	 * Create HMM variables.
 	 */
 	public void prepareMatrices() {
-		//System.out.printf("Reading in labeled corpus(%d) and preparing matrices.\n", labeled_corpus.size());
 		Integer posCounter = 0;
 		Integer vocabCounter = 0;
 		posCount = new ArrayList<Integer>();
@@ -213,7 +212,6 @@ class HMM {
 
 		num_postags = posCounter;
 		num_words = vocabCounter;
-		//System.out.printf("Read in %d unique POS tags and %d unique vocab words.\n", num_postags, num_words);
 
 		A = new Matrix(num_postags, num_postags);
 		B = new Matrix(num_postags, num_words);
@@ -227,10 +225,6 @@ class HMM {
 	 *  used as initialization of the parameters.
 	 */
 	public void mle() {
-		//System.out.println("Populating A, B and pi");
-		//System.out.printf("POS Bigram size: %d\n", posBigrams.size());
-		//System.out.printf("Word to POS bigram size: %d\n", wordPOSBigram.size());
-
 		int wordCount = 0;
 		Set<IntPair> posPairs = posBigrams.keySet();
 		for(IntPair pair : posPairs){
@@ -245,6 +239,7 @@ class HMM {
 					A.set(i, j, aij);
 				}
 			}
+			normalize(i, A);
 		}
 			
 		// for(int i = 0; i < A.getRowDimension(); i++){
@@ -257,24 +252,31 @@ class HMM {
 		// 	normalize(i, A);
 		// }
 
-		Set<IntPair> pairs = wordPOSBigram.keySet();
+		//Set<IntPair> pairs = wordPOSBigram.keySet();
 		int oneMatch = 0;
-		for(IntPair pair : pairs){
-			double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
-			B.set(pair.two, pair.one, bij);
-			//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
-			wordCount++;
-			if(wordPOSBigram.get(pair).equals(1)){
-				oneMatch++;
-			}
-		}
+		// for(IntPair pair : pairs){
+		// 	double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
+		// 	B.set(pair.two, pair.one, bij);
+		// 	//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
+		// 	wordCount++;
+		// 	if(wordPOSBigram.get(pair).equals(1)){
+		// 		oneMatch++;
+		// 	}
+		// }
+		int xp = 0;
 		for(int i = 0; i < B.getRowDimension(); i++){
 			for(int j = 0; j < B.getColumnDimension(); j++){
-				if(Double.compare(B.get(i,j), 0.0) == 0){
+				IntPair pair = new IntPair(j, i);
+				if(wordPOSBigram.containsKey(pair)){
+					double bij = ((double)wordPOSBigram.get(pair) + smoothing_eps) / ((double)posCount.get(pair.two) + (smoothing_eps * num_postags * num_postags));
+					B.set(pair.two, pair.one, bij);
+					xp++;
+				}else{
 					double bij = (smoothing_eps) / ((double)posCount.get(i) + (smoothing_eps * num_postags * num_postags));
 					B.set(i, j, bij);
 				}
 			}
+			normalize(i, B);
 		}
 		// for(int i = 0; i < B.getRowDimension(); i++){
 		// 	for(int j = 0; j < B.getColumnDimension(); j++){
@@ -308,16 +310,17 @@ class HMM {
 	 * Main EM algorithm. 
 	 */
 	public void em() {
+		if(Double.compare(mu, 1.0) == 0) return;
+
 		gamma = new Matrix(max_sentence_length, num_postags);
 		digamma = new Matrix(num_postags, num_postags);
 		gamma_w = new Matrix(num_postags, num_words);
 		gamma_0 = new Matrix(1, num_postags);
-		//System.out.println("Training EM model.");
+		
 		for(int i = 0; i < max_iters; i++){
 			for(Sentence s : unlabeled_corpus){
-				expection(s);
+				expectation(s);
 			}
-	
 			maximization();
 		}
 	}
@@ -362,29 +365,39 @@ class HMM {
 	 * Expection step of the EM (Baum-Welch) algorithm for one sentence.
 	 * \xi_t(i,j) and \xi_t(i) are computed for a sentence
 	 */
-	private double expection(Sentence s) {
+	private double expectation(Sentence s) {
 		forward(s);
 		backward(s);
 		for(int t = 0; t < s.length(); t++){
 			Word w = s.getWordAt(t);
 			int wordIndex = vocabulary.get(w.getLemme());
 
-			//Increment digamma for transitional accumulator 
-			for(int i = 0; i < num_postags; i++){
-				if(t == (s.length() - 1)) break; //need a next POS tag
-				for(int j = 0; j < num_postags; j++){
-					double dgij = alpha.get(t, i) * A.get(i, j) * B.get(j, wordIndex) * beta.get(t + 1, j);
-					double newVal = dgij + digamma.get(i, j);
-					digamma.set(i, j, newVal);
+			//Increment digamma for transitional accumulator
+			if(t == (s.length() - 1)){
+				for(int i = 0; i < num_postags; i++){
+					for(int j = 0; j < num_postags; j++){
+						double dgij = alpha.get(t, i) * A.get(i, j) * B.get(j, wordIndex);
+						double newVal = dgij + digamma.get(i, j);
+						digamma.set(i, j, newVal);
+					}
 				}
-			}
+			}else{
+				for(int i = 0; i < num_postags; i++){
+					for(int j = 0; j < num_postags; j++){
+						double dgij = alpha.get(t, i) * A.get(i, j) * B.get(j, wordIndex) * beta.get(t + 1, j);
+						double newVal = dgij + digamma.get(i, j);
+						digamma.set(i, j, newVal);
+					}
+				}
+			} 
+			
 
 			//Increment gamma for location of POS tags within the sentences
-			int offset = max_sentence_length - s.length();
+			//int offset = max_sentence_length - s.length();
 			for(int i = 0; i < num_postags; i++){
 				double gti = alpha.get(t, i) * beta.get(t, i);
 				double newVal = gamma.get(t, i) + gti;
-				gamma.set((t + offset), i, newVal);
+				gamma.set((t), i, newVal);
 
 				if(t == 0){
 					newVal = gamma_0.get(0, i) * gti;
@@ -424,7 +437,7 @@ class HMM {
 			}
 		}
 
-		// reestimate
+		// re-estimate
 		for(int i = 0; i < num_postags; i++){
 			for(int j = 0; j < num_postags; j++){
 				double dVal = (1 - mu) * ahat.get(i, j);
@@ -442,9 +455,6 @@ class HMM {
 			double lVal = mu * pi.get(0, i);
 			pi.set(0, i, lVal + dVal);
 		}
-		// A = ahat;
-		// B = bhat;
-		// pi = gamma_0;
 	}
 
 	private void normalize(int position, Matrix target){
@@ -655,13 +665,13 @@ class HMM {
 		model.setMu(mu);
 		System.out.println("Preparing HMM...");
 		model.prepareMatrices();
-		System.out.printf("Unsupervized learning... using mu = %f\n", mu);
+		System.out.printf("Unsupervized learning... using mu = %.1f\n", mu);
 		model.em();
 		System.out.println("Generating predictions...");
 		model.predict();
 		System.out.println("Writing predictions output file...");
 		model.outputPredictions(predictionFileName + "_" + String.format("%.1f", mu) + ".txt");
-		System.out.println("Finished. Writing log files...");
+		System.out.println("Finished. Writing log files...\n\n");
 		if (trainingLogFileName != null) {
 			model.outputTrainingLog(trainingLogFileName + "_" + String.format("%.1f", mu) + ".txt");
 		}
