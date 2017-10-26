@@ -226,18 +226,28 @@ class HMM {
 	 */
 	public void mle() {
 		int wordCount = 0;
-		Set<IntPair> posPairs = posBigrams.keySet();
-		for(IntPair pair : posPairs){
-			double aij = ((double)posBigrams.get(pair) + smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));//(double)posBigrams.get(pair)/(double)posCount.get(pair.one);
-			A.set(pair.one, pair.two, aij);
-			//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
-		}
+		// Set<IntPair> posPairs = posBigrams.keySet();
+		// for(IntPair pair : posPairs){
+		// 	double aij = ((double)posBigrams.get(pair) + smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));//(double)posBigrams.get(pair)/(double)posCount.get(pair.one);
+		// 	A.set(pair.one, pair.two, aij);
+		// 	//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
+		// }
 		for(int i = 0; i < A.getRowDimension(); i++){
 			for(int j = 0; j < A.getColumnDimension(); j++){
-				if(Double.compare(A.get(i,j), 0.0) == 0){
-					double aij = (smoothing_eps) / ((double)posCount.get(i) + (smoothing_eps * num_postags * num_postags));
+				IntPair pair = new IntPair(i, j);
+				if(posBigrams.containsKey(pair)){
+					double aij = ((double)posBigrams.get(pair) + smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));
+					A.set(i, j, aij);
+					//xp++;
+				}else{
+					double aij = (smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));
 					A.set(i, j, aij);
 				}
+
+				// if(Double.compare(A.get(i,j), 0.0) == 0){
+				// 	double aij = (smoothing_eps) / ((double)posCount.get(i) + (smoothing_eps * num_postags * num_postags));
+				// 	A.set(i, j, aij);
+				// }
 			}
 			normalize(i, A);
 		}
