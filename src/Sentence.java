@@ -5,6 +5,7 @@ import java.util.Iterator;
 
 class Sentence implements Iterable<Word> {
 	private ArrayList<Word> sentence;
+	public double prob[];
 
 	public Sentence() {
 		sentence = new ArrayList<Word>();

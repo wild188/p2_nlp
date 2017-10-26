@@ -67,12 +67,15 @@ class HMM {
 	
 	// transition matrix
 	private Matrix A;
+	private Matrix oA;
 
 	// emission matrix
 	private Matrix B;
+	private Matrix oB;
 
 	// prior of pos tags
 	private Matrix pi;
+	private Matrix opi;
 
 	// store the scaled alpha and beta
 	private Matrix alpha;
@@ -106,10 +109,10 @@ class HMM {
 
 	// smoothing epsilon for the B matrix (since there are likely to be unseen words in the training corpus)
 	// preventing B(j, o) from being 0
-	private double smoothing_eps = 0.1;
+	private double smoothing_eps = 0.01;
 
 	// number of iterations of EM
-	private int max_iters = 10;
+	private int max_iters = 30;
 	
 	// \mu: a value in [0,1] to balance estimations from MLE and EM
 	// \mu=1: totally supervised and \mu = 0: use MLE to start but then use EM totally.
@@ -226,12 +229,6 @@ class HMM {
 	 */
 	public void mle() {
 		int wordCount = 0;
-		// Set<IntPair> posPairs = posBigrams.keySet();
-		// for(IntPair pair : posPairs){
-		// 	double aij = ((double)posBigrams.get(pair) + smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));//(double)posBigrams.get(pair)/(double)posCount.get(pair.one);
-		// 	A.set(pair.one, pair.two, aij);
-		// 	//System.out.printf("%s, %s: %d  (%d)\n", inv_pos_tags.get(pair.one), inv_pos_tags.get(pair.two), posBigrams.get(pair), pair.hashCode());
-		// }
 		for(int i = 0; i < A.getRowDimension(); i++){
 			for(int j = 0; j < A.getColumnDimension(); j++){
 				IntPair pair = new IntPair(i, j);
@@ -243,36 +240,11 @@ class HMM {
 					double aij = (smoothing_eps) / ((double)posCount.get(pair.one) + (smoothing_eps * num_postags * num_postags));
 					A.set(i, j, aij);
 				}
-
-				// if(Double.compare(A.get(i,j), 0.0) == 0){
-				// 	double aij = (smoothing_eps) / ((double)posCount.get(i) + (smoothing_eps * num_postags * num_postags));
-				// 	A.set(i, j, aij);
-				// }
 			}
 			normalize(i, A);
 		}
-			
-		// for(int i = 0; i < A.getRowDimension(); i++){
-		// 	for(int j = 0; j < A.getColumnDimension(); j++){
-		// 		IntPair temp = new IntPair(i, j);
-		// 		int count = posBigrams.containsKey(temp) ? posBigrams.get(temp) : 0;
-		// 		double aij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_postags * num_postags));
-		// 		A.set(i, j, aij);
-		// 	}
-		// 	normalize(i, A);
-		// }
 
-		//Set<IntPair> pairs = wordPOSBigram.keySet();
 		int oneMatch = 0;
-		// for(IntPair pair : pairs){
-		// 	double bij = (double)wordPOSBigram.get(pair)/(double)posCount.get(pair.two);
-		// 	B.set(pair.two, pair.one, bij);
-		// 	//System.out.printf("%d, %d: %d   (%d)\n", pair.one, pair.two, wordPOSBigram.get(pair), pair.hashCode());
-		// 	wordCount++;
-		// 	if(wordPOSBigram.get(pair).equals(1)){
-		// 		oneMatch++;
-		// 	}
-		// }
 		int xp = 0;
 		for(int i = 0; i < B.getRowDimension(); i++){
 			for(int j = 0; j < B.getColumnDimension(); j++){
@@ -288,15 +260,6 @@ class HMM {
 			}
 			normalize(i, B);
 		}
-		// for(int i = 0; i < B.getRowDimension(); i++){
-		// 	for(int j = 0; j < B.getColumnDimension(); j++){
-		// 		IntPair temp = new IntPair(i, j);
-		// 		int count = wordPOSBigram.containsKey(temp) ? wordPOSBigram.get(temp) : 0;
-		// 		double bij = (count + smoothing_eps) / (posCount.get(i) + (smoothing_eps * num_words * num_postags));
-		// 		B.set(i, j, bij);
-		// 	}
-		// 	normalize(i, B);
-		// }
 
 
 		int[] startPOS = new int[num_postags];
@@ -320,16 +283,23 @@ class HMM {
 	 * Main EM algorithm. 
 	 */
 	public void em() {
-		if(Double.compare(mu, 1.0) == 0) return;
+		//if(Double.compare(mu, 1.0) == 0) return;
+		oA = (Matrix)A.clone();
+		oB = (Matrix)B.clone();
+		opi = (Matrix)pi.clone();
+
 
 		gamma = new Matrix(max_sentence_length, num_postags);
 		digamma = new Matrix(num_postags, num_postags);
 		gamma_w = new Matrix(num_postags, num_words);
 		gamma_0 = new Matrix(1, num_postags);
-		
+
 		for(int i = 0; i < max_iters; i++){
 			for(Sentence s : unlabeled_corpus){
-				expectation(s);
+				if(i == 0){
+					s.prob = new double[max_iters];
+				}
+				s.prob[i] = expectation(s);
 			}
 			maximization();
 		}
@@ -369,6 +339,21 @@ class HMM {
 	 * outputTrainingLog
 	 */
 	public void outputTrainingLog(String outFileName) throws IOException {
+		FileWriter fw = new FileWriter(outFileName);
+		BufferedWriter bw = new BufferedWriter(fw);
+		
+		for(Sentence s : unlabeled_corpus){
+			for(double prob : s.prob){
+				bw.write(prob + ", ");
+			}
+			//bw.write(s.prob + " : ");
+			for(Word word : s){
+				bw.write(word.getLemme() + " ");
+			}
+			bw.newLine();
+		}
+		bw.close();
+        fw.close();
 	}
 	
 	/**
@@ -376,7 +361,8 @@ class HMM {
 	 * \xi_t(i,j) and \xi_t(i) are computed for a sentence
 	 */
 	private double expectation(Sentence s) {
-		forward(s);
+		double out = forward(s);
+
 		backward(s);
 		for(int t = 0; t < s.length(); t++){
 			Word w = s.getWordAt(t);
@@ -420,7 +406,7 @@ class HMM {
 		}
 		
 		//print(beta);
-		return 0;
+		return out;
 	}
 
 	/**
@@ -451,18 +437,18 @@ class HMM {
 		for(int i = 0; i < num_postags; i++){
 			for(int j = 0; j < num_postags; j++){
 				double dVal = (1 - mu) * ahat.get(i, j);
-				double lVal = mu * A.get(i, j);
+				double lVal = mu * oA.get(i, j);
 				A.set(i, j, lVal + dVal);
 			}
 
 			for(int j = 0; j < num_words; j++){
 				double dVal = (1 - mu) * bhat.get(i, j);
-				double lVal = mu * B.get(i, j);
+				double lVal = mu * oB.get(i, j);
 				B.set(i, j, lVal + dVal);
 			}
 
 			double dVal = (1 - mu) * gamma_0.get(0, i);
-			double lVal = mu * pi.get(0, i);
+			double lVal = mu * opi.get(0, i);
 			pi.set(0, i, lVal + dVal);
 		}
 	}
@@ -686,38 +672,4 @@ class HMM {
 			model.outputTrainingLog(trainingLogFileName + "_" + String.format("%.1f", mu) + ".txt");
 		}
 	}
-
-	// public static void main(String[] args) throws IOException {
-	// 	if (args.length < 3) {
-	// 		System.out.println("Expecting at least 3 parameters");
-	// 		System.exit(0);
-	// 	}
-	// 	String labeledFileName = args[0];
-	// 	String unlabeledFileName = args[1];
-	// 	String predictionFileName = args[2];
-		
-	// 	String trainingLogFileName = null;
-		
-	// 	if (args.length > 3) {
-	// 		trainingLogFileName = args[3];
-	// 	}
-		
-	// 	// read in labeled corpus
-	// 	FileHandler fh = new FileHandler();
-		
-	// 	ArrayList<Sentence> labeled_corpus = fh.readTaggedSentences(labeledFileName);
-		
-	// 	ArrayList<Sentence> unlabeled_corpus = fh.readTaggedSentences(unlabeledFileName);
-
-	// 	HMM model = new HMM(labeled_corpus, unlabeled_corpus);
-
-	// 	model.prepareMatrices();
-	// 	model.em();
-	// 	model.predict();
-	// 	model.outputPredictions(predictionFileName);
-		
-	// 	if (trainingLogFileName != null) {
-	// 		model.outputTrainingLog(trainingLogFileName);
-	// 	}
-	// }
 }
