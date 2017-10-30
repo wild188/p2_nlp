@@ -295,6 +295,7 @@ class HMM {
 		gamma_0 = new Matrix(1, num_postags);
 
 		for(int i = 0; i < max_iters; i++){
+			progress(i, max_iters);
 			for(Sentence s : unlabeled_corpus){
 				if(i == 0){
 					s.prob = new double[max_iters];
@@ -303,6 +304,28 @@ class HMM {
 			}
 			maximization();
 		}
+		progress(max_iters, max_iters);
+	}
+
+	private void progress(int cur, int max){
+		progress((double)cur, (double)max, cur == max);
+	}
+
+	private void progress(double cur, double max, boolean done){
+		int length = 50;
+		int inc = (int)Math.round((cur/max) * length);
+		StringBuilder output = new StringBuilder();
+		output.append("|");
+		for(int i = 0; i < length; i++){
+			if(i < inc) output.append("#");
+			else output.append(" ");
+		}
+		if(done){
+			output.append(String.format("| done \n", (100.0 * cur/max)));
+		}else{
+			output.append(String.format("| %.1f%% \r", (100.0 * cur/max)));
+		}
+		System.out.print(output.toString());
 	}
 
 	/**
@@ -386,7 +409,6 @@ class HMM {
 					}
 				}
 			} 
-			
 
 			//Increment gamma for location of POS tags within the sentences
 			//int offset = max_sentence_length - s.length();
