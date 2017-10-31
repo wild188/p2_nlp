@@ -294,13 +294,12 @@ class HMM {
 		gamma_w = new Matrix(num_postags, num_words);
 		gamma_0 = new Matrix(1, num_postags);
 
+		log_likelihood = new double[max_iters];
+
 		for(int i = 0; i < max_iters; i++){
 			progress(i, max_iters);
 			for(Sentence s : unlabeled_corpus){
-				if(i == 0){
-					s.prob = new double[max_iters];
-				}
-				s.prob[i] = expectation(s);
+				log_likelihood[i] += expectation(s);
 			}
 			maximization();
 		}
@@ -365,16 +364,20 @@ class HMM {
 		FileWriter fw = new FileWriter(outFileName);
 		BufferedWriter bw = new BufferedWriter(fw);
 		
-		for(Sentence s : unlabeled_corpus){
-			for(double prob : s.prob){
-				bw.write(prob + ", ");
-			}
-			//bw.write(s.prob + " : ");
-			for(Word word : s){
-				bw.write(word.getLemme() + " ");
-			}
-			bw.newLine();
+		for(double log : log_likelihood){
+			bw.write(log +  "\n");
 		}
+
+		// for(Sentence s : unlabeled_corpus){
+		// 	for(double prob : s.prob){
+		// 		bw.write(prob + ", ");
+		// 	}
+		// 	//bw.write(s.prob + " : ");
+		// 	for(Word word : s){
+		// 		bw.write(word.getLemme() + " ");
+		// 	}
+		// 	bw.newLine();
+		// }
 		bw.close();
         fw.close();
 	}
